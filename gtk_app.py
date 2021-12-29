@@ -34,13 +34,13 @@ class Main:
 
     def populateTreeView(self,fp):
         if(fp == "none"):
-            print("helloooo WOLRD")
+            print("Gtk Python Glade")
         else:
             file_path = fp
             pass1 = ldd.find_shared_libs(file_path)
             pass2 = ldd.privilege(pass1)
-            pass3 = ["foo","printf","puts"]
-            pass4 = ["Yes", "No","Yes"]
+            pass3 = ldd.search_for_imported_symbols(pass1,fp)
+            pass4 = ["Yes", "No","No"]
             for elem in range(0,len(pass1)):
                 self.pathListStore.append([pass1[elem],pass2[elem],pass3[elem],pass4[elem]])
 
