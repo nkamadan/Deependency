@@ -1,6 +1,9 @@
 import os
 import r2pipe
 import json
+from dataclasses import dataclass
+
+
 
 # ls -l file_path --> user? root?
 
@@ -10,6 +13,17 @@ import json
 
 # Get the list of standard library functions that include rdtsc and do not include rdtsc.
 # Only show the dependent symbols if they include rdtsc. There are 100s of symbols in a binary. We need to get rid of displaying every one of them. 
+
+@dataclass
+class symbols_meta:
+    addr: str
+    name: list # symbols imported from this lib
+
+@dataclass
+class lib_symbols:
+    lib: str
+    symbols: list # symbols imported from this lib --> list of symbols_meta [symbols_meta]
+    priv: str # user or root privilege
 
 
 standard_functions = ['localtime','asctime','clock_get_time','timespec_get','clock_gettime','system_clock::now']
@@ -78,6 +92,7 @@ def find_shared_libs(binary):
 
     return final_paths
     
+def 
 
 
 def open_file(file_path):
