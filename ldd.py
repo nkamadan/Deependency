@@ -8,6 +8,12 @@ import json
 
 # os.system("gdb -batch -ex 'file /home/kamadan/Desktop/dynamic_link_example/libfoo.so' -ex 'disassemble foo' | grep rdtsc")
 
+# Get the list of standard library functions that include rdtsc and do not include rdtsc.
+# Only show the dependent symbols if they include rdtsc. There are 100s of symbols in a binary. We need to get rid of displaying every one of them. 
+
+
+standard_functions = ['localtime','asctime','clock_get_time','timespec_get','clock_gettime','system_clock::now']
+
 def imported_symbols(radare2):
     imported_list = []
     # Analyze all
@@ -80,7 +86,8 @@ def open_file(file_path):
         file_path = input("enter the file name to be analyzed: ")
 
     return (r2pipe.open(file_path))
-'''
+
+
 def main():
     file_path = "/home/kamadan/Desktop/dynamic_link_example/main"
     r = open_file(file_path)
@@ -88,9 +95,11 @@ def main():
     print(imp_list)
     libraries = find_shared_libs(file_path)
     print(libraries)
-    search_for_imported_symbols(libraries,file_path)
-    #haha = privilege(file_path)
+    result = search_for_imported_symbols(libraries,file_path)
+    print("result after this line")
+    print(result)
+    haha = privilege(libraries)
+    print(haha)
 
 if __name__ == "__main__":
     main()
-'''
