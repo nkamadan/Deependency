@@ -14,59 +14,104 @@ from dataclasses import dataclass
 # Get the list of standard library functions that include rdtsc and do not include rdtsc.
 # Only show the dependent symbols if they include rdtsc. There are 100s of symbols in a binary. We need to get rid of displaying every one of them. 
 
+
+all_symbols = [] # list of elements including addr + name data 
+shared_libs = [] # list of libs that the binary we analyze needs
+
 @dataclass
 class symbols_meta:
     addr: str
-    name: list # symbols imported from this lib
+    name: str # symbols imported from this lib
+    instr_count: int # # of instructions this symbol has
+
+    def __init__(self, addr: str = "init", name: str = "init",instr_count: int = -1):
+        self.name = name
+        self.addr = addr
+        self.instr_count = instr_count
+
+    def __str__(self): 
+        return "Symbol object-> Name: %s, Adress: %s, Instr: %s" % (self.name,self.addr,self.instr_count)
 
 @dataclass
 class lib_symbols:
     lib: str
     symbols: list # symbols imported from this lib --> list of symbols_meta [symbols_meta]
     priv: str # user or root privilege
+    def __init__(self, lib: str = "init", symbols: list = [], priv: str = "init"):
+        self.lib = lib
+        self.symbols = symbols
+        self.priv = priv
 
+    def __str__(self): 
+        return "Lib object-> Name: %s, Symbols: %s, Privilege: %s" % (self.lib,self.symbols,self.priv)
 
 standard_functions = ['localtime','asctime','clock_get_time','timespec_get','clock_gettime','system_clock::now']
 
+def clean_symbols():
+    a = 5
+
 def imported_symbols(radare2):
-    imported_list = []
     # Analyze all
     print("Analyzing the file ###############################")
     radare2.cmd('aaa')
     isj_result = radare2.cmd("isj")
     blocksJson = json.loads(isj_result)
     for block in blocksJson:
-        if (block["name"].find("imp.") > -1) and (block["flagname"].find("sym.imp") > -1):
-            imported_list.append(block["realname"])
+        if (block["name"].find("imp.") > -1) and (block["flagname"].find("sym.imp") > -1 and block["vaddr"] != 0):
+            temp_symbol = symbols_meta(block["vaddr"],block["realname"])
+            all_symbols.append(temp_symbol)
         else:
             continue
-    return imported_list
+    return all_symbols
 
 
-def search_for_imported_symbols(binaries,file_path):
-    r = open_file(file_path)
-    imported_syms = imported_symbols(r)
-    r_imported_symbols = []
-    for bin in binaries:
-        imp_sym_for_this_bin = ""
-        for symbol in imported_syms:
-            output = os.popen("gdb -batch -ex 'file {}' -ex 'disassemble {}'".format(bin,symbol)).read()
+def populate_libs_wsymbols():
+    for symbol in all_symbols:
+        for bin in shared_libs:
+            output = os.popen("gdb -batch -ex 'file {}' -ex 'disassemble {}'".format(bin.lib,symbol.name)).read()
+            temp = []
+            incr = 0
+            for out in output:
+                if out == "\n":
+                    incr = incr + 1
+            #print("COUNT: {} and symbol {}".format(incr, symbol.name))
             if(len(output) > 0):
-                imp_sym_for_this_bin += symbol
-                imp_sym_for_this_bin += ";"
-        r_imported_symbols.append(imp_sym_for_this_bin)
-    for x in range(len(r_imported_symbols)):
-        if(r_imported_symbols[x] == ""):
-            r_imported_symbols[x] = "No imported symbol"
-    return r_imported_symbols
+                symbol.instr_count = incr
+                if(len(bin.symbols) == 0):
+                    temp.append(symbol)
+                    bin.symbols = temp
+                    break
+                else:
+                    bin.symbols.append(symbol)
+                    break
+    return shared_libs
 
-def privilege(binaries):
-    privileges = []
-    for bin in binaries:
-        result = os.popen("ls -l {}".format(bin)).read()
+def populate_libs_wsymbols_reverse():
+    for bin in shared_libs:
+        for symbol in all_symbols:
+            output = os.popen("gdb -batch -ex 'file {}' -ex 'disassemble {}'".format(bin.lib,symbol.name)).read()
+            temp = []
+            incr = 0
+            for out in output:
+                if out == "\n":
+                    incr = incr + 1
+            #print("COUNT: {} and symbol {}".format(incr, symbol.name))
+            if(len(output) > 0):
+                symbol.instr_count = incr - 2 # incr contains 2 more information lines.
+                if(len(bin.symbols) == 0):
+                    temp.append(symbol)
+                    bin.symbols = temp
+                else:
+                    bin.symbols.append(symbol)
+    return shared_libs
+ 
+
+def privilege():
+    for bin in shared_libs:
+        result = os.popen("ls -l {}".format(bin.lib)).read()
         splitted = result.split(" ")
-        privileges.append(splitted[2])
-    return privileges    
+        bin.priv = splitted[2]
+    return shared_libs   
 
 def does_this_function_in_this_binary_contain_rdtsc(func,lib):
     a = 5
@@ -85,14 +130,15 @@ def find_shared_libs(binary):
             #print("vdso --> ignored")
             continue
         else:
+            lib = lib_symbols()
             if(len(elem) == 2):  # /lib64/ld-linux-x86-64.so.2 (0x00007fb438338000)
-                final_paths.append(elem[0].strip())
-            else:               # libfoo.so => /lib/libfoo.so (0x00007fb438310000)
-                final_paths.append(elem[2].strip())
+                lib.lib = elem[0].strip()
+                shared_libs.append(lib)
+            else:   
+                lib.lib = elem[2].strip()            # libfoo.so => /lib/libfoo.so (0x00007fb438310000)
+                shared_libs.append(lib)
 
-    return final_paths
-    
-def 
+    return shared_libs 
 
 
 def open_file(file_path):
@@ -105,16 +151,19 @@ def open_file(file_path):
 
 def main():
     file_path = "/home/kamadan/Desktop/dynamic_link_example/main"
+    #file_path = "/bin/ls"
     r = open_file(file_path)
     imp_list = imported_symbols(r)
-    print(imp_list)
+    #print(imp_list)
     libraries = find_shared_libs(file_path)
-    print(libraries)
-    result = search_for_imported_symbols(libraries,file_path)
-    print("result after this line")
-    print(result)
-    haha = privilege(libraries)
-    print(haha)
+    #print(libraries)
+    result = populate_libs_wsymbols()
+    #print(result)
+    # print("global variables")
+    # print(all_symbols)
+    # print(shared_libs)
+    last = privilege()
+    print(last)
 
 if __name__ == "__main__":
     main()
