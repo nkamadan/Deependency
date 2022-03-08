@@ -1,7 +1,9 @@
 import os
+from numpy import True_
 import r2pipe
 import json
 from dataclasses import dataclass
+import re
 
 
 
@@ -9,10 +11,7 @@ from dataclasses import dataclass
 
 # env LD_DEBUG=bindings ./main
 
-# os.system("gdb -batch -ex 'file /home/kamadan/Desktop/dynamic_link_example/libfoo.so' -ex 'disassemble foo' | grep rdtsc")
-
-# Get the list of standard library functions that include rdtsc and do not include rdtsc.
-# Only show the dependent symbols if they include rdtsc. There are 100s of symbols in a binary. We need to get rid of displaying every one of them. 
+# os.system("gdb -batch -ex 'file /home/kamadan/Desktop/dynamic_link_example/libfoo.so' -ex 'disassemble foo' ") 
 
 
 all_symbols = [] # list of elements including addr + name data 
@@ -23,14 +22,14 @@ class symbols_meta:
     addr: str
     name: str # symbols imported from this lib
     instr_count: int # # of instructions this symbol has
-
+    timing: bool
     def __init__(self, addr: str = "init", name: str = "init",instr_count: int = -1):
         self.name = name
         self.addr = addr
         self.instr_count = instr_count
 
     def __str__(self): 
-        return "Symbol object-> Name: %s, Adress: %s, Instr: %s" % (self.name,self.addr,self.instr_count)
+        return "Symbol object-> Name: %s, Adress: %s, Instr: %s, Timing: %s" % (self.name,self.addr,self.instr_count,self.timing)
 
 @dataclass
 class lib_symbols:
@@ -45,7 +44,7 @@ class lib_symbols:
     def __str__(self): 
         return "Lib object-> Name: %s, Symbols: %s, Privilege: %s" % (self.lib,self.symbols,self.priv)
 
-standard_functions = ['localtime','asctime','clock_get_time','timespec_get','clock_gettime','system_clock::now']
+timing_functions = ['localtime','asctime','clock_get_time','timespec_get','clock_gettime','system_clock::now']
 
 def clean_symbols():
     a = 5
@@ -68,14 +67,19 @@ def imported_symbols(radare2):
 def populate_libs_wsymbols():
     for symbol in all_symbols:
         for bin in shared_libs:
-            output = os.popen("gdb -batch -ex 'file {}' -ex 'disassemble {}'".format(bin.lib,symbol.name)).read()
+            dump = os.popen("gdb -batch -ex 'file {}' -ex 'disassemble {}'".format(bin.lib,symbol.name)).read()
             temp = []
             incr = 0
-            for out in output:
+            for out in dump:
                 if out == "\n":
                     incr = incr + 1
             #print("COUNT: {} and symbol {}".format(incr, symbol.name))
-            if(len(output) > 0):
+            if(len(dump) > 0):
+                timing = detect_timing(dump)
+                if timing == True:
+                    symbol.timing = True
+                else:
+                    symbol.timing = False
                 symbol.instr_count = incr
                 if(len(bin.symbols) == 0):
                     temp.append(symbol)
@@ -113,9 +117,6 @@ def privilege():
         bin.priv = splitted[2]
     return shared_libs   
 
-def does_this_function_in_this_binary_contain_rdtsc(func,lib):
-    a = 5
-
 def find_shared_libs(binary):
     result = os.popen("ldd {}".format(binary)).read()
     dependencies = result.split("\n")
@@ -140,6 +141,15 @@ def find_shared_libs(binary):
 
     return shared_libs 
 
+def detect_timing(dump):
+    splitted_by_ws = dump.split()
+    for elem in splitted_by_ws:
+        for func in timing_functions:
+            if elem.find(func) > -1:
+                return 1
+        if elem.find("rdtsc") > -1 or elem.find("rdtscp") > -1:
+            return 1
+    return 0
 
 def open_file(file_path):
 
@@ -148,10 +158,7 @@ def open_file(file_path):
 
     return (r2pipe.open(file_path))
 
-
-def main():
-    file_path = "/home/kamadan/Desktop/dynamic_link_example/main"
-    #file_path = "/bin/ls"
+def call_this_from_main(file_path):
     r = open_file(file_path)
     imp_list = imported_symbols(r)
     #print(imp_list)
@@ -164,6 +171,12 @@ def main():
     # print(shared_libs)
     last = privilege()
     print(last)
+
+def main():
+    file_path = "/home/kamadan/Desktop/dynamic_link_example/main"
+    #file_path = "/home/kamadan/Desktop/deependency/time_functions/clock_gettime/program"
+    #file_path = "/bin/ls"
+    call_this_from_main(file_path)
 
 if __name__ == "__main__":
     main()
